@@ -1,7 +1,12 @@
-import assert from 'node:assert/strict';import {makeCase,verify,accuse,clues,suspects} from './dist/engine.js';
-for(let seed=0;seed<1000;seed++){const c=makeCase(seed);assert.deepEqual(c,makeCase(seed));assert.equal(verify(c).ok,true)}
-const broken=makeCase();broken.nodes=broken.nodes.filter(n=>n.id!=='glass');assert.equal(verify(broken).ok,false);assert.match(verify(broken).errors.join(' '),/glass/);
-const cyclic=makeCase();cyclic.nodes[0].requires=['will'];assert.equal(verify(cyclic).ok,false);
-const ambiguous=makeCase();ambiguous.candidates[1].routes=[['will','glass','key']];assert.equal(verify(ambiguous).ok,false);
-assert.equal(accuse(suspects[0],['will','glass','key']).ok,true);assert.equal(accuse(suspects[0],['will']).ok,false);assert.equal(accuse(suspects[1],clues.map(c=>c.id)).ok,false);
-const naive=Array.from({length:100},(_,i)=>verify(makeCase(1000+i,true)));assert(naive.some(r=>!r.ok));assert(naive.some(r=>r.ok));console.log('Passed: 1,000 seeded cases, determinism, missing evidence, cycles, ambiguity, accusation rules and naive-generator failures.');
+import assert from 'node:assert/strict';
+import {makeCase,verify,derive,accuse,breakCase,canDiscover,parseSeed} from './dist/engine.js';
+const outcomes=new Set();
+for(const setting of ['manor','train','museum'])for(let seed=0;seed<100;seed++){const c=makeCase(seed,setting),r=verify(c);assert.equal(r.ok,true,JSON.stringify(r.errors));assert(r.validRoutes.length>1);assert.deepEqual(c,makeCase(seed,setting));outcomes.add(c.culprit);for(const route of r.validRoutes){assert(accuse(c,c.culprit,route).ok);for(const id of route)assert.equal(accuse(c,c.culprit,route.filter(x=>x!==id)).ok,false,'proof must be minimal')}for(const p of c.people.filter(p=>p.id!==c.culprit))assert.equal(accuse(c,p.id,c.clues.map(x=>x.id)).ok,false)}
+assert(outcomes.size===4);const c=makeCase(1042);assert.equal(canDiscover(c,'glass',[]),false);assert.equal(canDiscover(c,'glass',['clock']),true);assert.equal(canDiscover(c,'ledger',[]),false);assert.equal(canDiscover(c,'ledger',['key']),true);
+for(const mode of ['missing','contradiction','unreachable','cycle']){const broken=breakCase(c,mode),r=verify(broken);assert.equal(r.ok,false,mode);assert.equal(accuse(broken,c.culprit,c.clues.map(x=>x.id)).ok,false)}
+const unsupported=structuredClone(c);unsupported.nodes.find(n=>n.id===c.requiredConclusion).alternatives=[['clock']];assert(verify(unsupported).errors.some(e=>e.code==='unsupported'));
+const unresolved=structuredClone(c);unresolved.nodes.find(n=>n.id==='resolved-lie').alternatives=[];assert(verify(unresolved).errors.some(e=>e.code==='unresolved-lie'));
+const ambiguous=structuredClone(c);ambiguous.nodes.find(n=>n.type==='conclusion'&&n.id!==c.requiredConclusion).alternatives=structuredClone(c.nodes.find(n=>n.id===c.requiredConclusion).alternatives);assert(verify(ambiguous).errors.some(e=>e.code==='uniqueness'));
+const alternate=structuredClone(c);alternate.nodes.find(n=>n.id==='will').requires=['letter'];const changed=verify(alternate);assert(changed.ok);assert(changed.validRoutes.length<verify(c).validRoutes.length,'proofs must derive from changed dependencies, not a fixed route list');
+for(const x of ['-1','1.2','bad','4294967296'])assert.throws(()=>parseSeed(x));assert.equal(parseSeed('4294967295'),4294967295);
+console.log('Passed: 300 playable cases, all minimal proof paths, every suspect outcome, deterministic seeds, prerequisite locks, missing nodes, factual contradictions, unreachable conclusions, cycles, unsupported proofs, ambiguity, unresolved testimony and graph-derived routes.');
