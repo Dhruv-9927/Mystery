@@ -211,13 +211,6 @@ For public access, put the application behind HTTPS and retain `/app/data`. Conf
 
 No public hosting account, external database or paid service is provisioned by this repository.
 
-## Media and project scope
-
-- Intro: the user-supplied **WhatsApp Video 2026-10-15 at 11.33.33 PM.mp4**.
-- Ambience: audio extracted from **Video Project.mp4**, with a three-second overlap crossfade at the loop boundary.
-- Intro audio is muted to avoid competing tracks. Ambience begins after a user gesture; music and interaction effects have persistent controls.
-- The logo is an original scalable SVG treatment inspired by the supplied magnifying-glass reference.
-
 Mysteries use deterministic authored templates and formal assertions, not unrestricted AI-generated prose. Verification establishes properties of those encoded rules; it does not understand arbitrary natural-language edits. The three settings share architectural geometry with different props. Multiplayer uses anonymous browser sessions, not user accounts, ranked matchmaking or cross-device account recovery.
 
 The code and media are provided here without an added project-wide license grant. Dependency licenses remain with their respective packages; supplied media ownership is not altered by inclusion.
