@@ -21,7 +21,7 @@ Choose a verified folder or generate a seed-based murder, theft, or sabotage cas
 
 Build an argument from discovered evidence, then challenge it: identify the strongest clue, resolve conflicting testimony with an independent record, exclude an alternative suspect, and check an assumption. The server checks the proof instead of trusting client-side completion flags. Accepted alternative proof paths count; a guessed suspect does not. Explicitly revealing a solution does not mark a case solved.
 
-The generator can deliberately assemble broken drafts. Verification reports identify missing prerequisites, cycles, contradictions, time inconsistencies, unreachable conclusions and unsupported or ambiguous solutions. Correction previews explain individual changes; applying them creates a new revision and reruns verification, retaining the original. The prerequisite editor also creates revisions. Player graphs hide unrecovered evidence and conclusions; explicit author mode reveals spoilers and proof paths.
+The backend automatically assembles seeded drafts; players choose setting, genre and seed, not an error mode. The verifier independently diagnoses any flaws. Verification reports identify missing prerequisites, cycles, contradictions, time inconsistencies, unreachable conclusions and unsupported or ambiguous solutions. Correction previews explain individual changes; applying them creates a new revision and reruns verification, retaining the original. The prerequisite editor also creates revisions. Player graphs hide unrecovered evidence and conclusions; explicit author mode reveals spoilers and proof paths.
 
 ## Architecture and limits
 

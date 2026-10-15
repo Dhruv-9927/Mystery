@@ -14,7 +14,12 @@ def client():
         yield c
 
 def create(client, **kwargs):
-    r=client.post('/api/cases',json={'seed':512, 'setting':'manor','genre':'murder','fault':'none',**kwargs})
+    from backend.engine import generate
+    desired = kwargs.pop('fault', 'none')
+    options = {'seed':512, 'setting':'manor','genre':'murder',**kwargs}
+    while generate(options['seed'], options['setting'], options['genre'], 'mixed')['fault'] != desired:
+        options['seed'] += 1
+    r=client.post('/api/cases',json=options)
     assert r.status_code==200,r.text
     draft=r.json(); assert draft['state']=='draft'
     assert client.post('/api/cases/'+draft['id']+'/select',json={}).status_code==409
@@ -39,7 +44,7 @@ def test_draft_verification_and_correction_are_gates(client):
     assert client.get('/api/session').json()['selected']==corrected['id']
 
 def test_board_notes_connections_and_case_isolation(client):
-    c=create(client);other=create(client,seed=513);url='/api/cases/'+c['id']
+    c=create(client);other=create(client,seed=1513);url='/api/cases/'+c['id']
     assert client.post(url+'/board',json={'action':'pin','clue_id':'clock'}).status_code==422
     for id in ['clock','will']: assert client.post(url+'/discover',json={'clue_id':id}).status_code==200
     p=client.post(url+'/board',json={'action':'connect','source':'will','target':'clock','relation':'supports','explanation':'Compare these records.'}).json()['progress']
@@ -100,3 +105,15 @@ def test_supplied_intro_asset_identity():
     import hashlib
     asset=Path(__file__).resolve().parents[1]/'public/assets/intro.mp4'
     assert hashlib.sha256(asset.read_bytes()).hexdigest() == '9088ee21e66865bf6b648ec633f5cc620ed9e623a6c73e99ad8d613f8d3b9294'
+
+
+def test_generation_rejects_player_selected_errors(client):
+    assert client.post('/api/cases',json={'seed':5271,'fault':'none'}).status_code == 422
+    from backend.engine import generate, verify
+    for seed in range(10):
+        expected = generate(seed, 'manor', 'murder', 'mixed')
+        draft = client.post('/api/cases',json={'seed':seed,'setting':'manor','genre':'murder'}).json()
+        assert draft['state'] == 'draft'
+        checked = client.post('/api/cases/'+draft['id']+'/verify',json={}).json()
+        assert checked['report']['playable'] == verify(expected)['playable']
+

@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from .engine import generate, verify, correct, discoverable, infer, graph, validate_accusation, SETTINGS, GENRES, RELATIONS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -96,15 +96,15 @@ def session(req: Request, response: Response):
     return {'cases': [summary(json.loads(r['data']), json.loads(r['progress'])) for r in rows], 'selected': selected, 'settings': SETTINGS, 'genres': GENRES, 'relations': RELATIONS}
 
 class Generation(BaseModel):
+    model_config = ConfigDict(extra='forbid')
     seed: int = Field(ge=0, le=4294967295)
     setting: str = 'manor'
     genre: str = 'murder'
-    fault: str = 'mixed'
 
 @app.post('/api/cases')
 def create(body: Generation, req: Request):
     sid = owner(req)
-    try: c = generate(body.seed, body.setting, body.genre, body.fault)
+    try: c = generate(body.seed, body.setting, body.genre, 'mixed')
     except ValueError as e: raise HTTPException(422, str(e))
     # Distinct draft identity for a different fault variant, without changing reproducibility.
     c['id'] = c['id'].replace('-r1', f'-{c["fault"]}-r1')
