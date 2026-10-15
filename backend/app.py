@@ -5,7 +5,9 @@ import os
 import secrets
 import sqlite3
 import threading
-from contextlib import contextmanager
+from contextvars import ContextVar
+from functools import wraps
+from contextlib import contextmanager, closing
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,13 +18,36 @@ ROOT = Path(__file__).resolve().parents[1]
 DB = Path(os.environ.get('CASE101_DB', str(ROOT / 'data' / 'case101.sqlite3')))
 DB.parent.mkdir(parents=True, exist_ok=True)
 LOCK = threading.RLock()
+ACTIVE_DB = ContextVar('case101_transaction', default=None)
 
 @contextmanager
 def db():
+    active = ACTIVE_DB.get()
+    if active is not None:
+        yield active
+        return
     with LOCK:
-        conn = sqlite3.connect(DB); conn.row_factory = sqlite3.Row
+        conn = sqlite3.connect(DB, timeout=30); conn.row_factory = sqlite3.Row
         try: yield conn; conn.commit()
         finally: conn.close()
+
+def atomic(fn):
+    """One SQLite write transaction for each operation, including validation and guards."""
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        with LOCK, closing(sqlite3.connect(DB, timeout=30)) as conn, conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute('BEGIN IMMEDIATE')
+            token = ACTIVE_DB.set(conn)
+            try:
+                cid, req = kwargs.get('cid'), kwargs.get('req')
+                if cid and cid.startswith('race-') and req:
+                    from .race import guard
+                    guard(conn, cid, owner(req), req)
+                return fn(*args, **kwargs)
+            finally:
+                ACTIVE_DB.reset(token)
+    return wrapped
 
 with db() as conn:
     conn.executescript('CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, selected TEXT); CREATE TABLE IF NOT EXISTS cases (owner TEXT, id TEXT, data TEXT, progress TEXT, PRIMARY KEY(owner,id));')
@@ -66,7 +91,7 @@ def certify(c):
     c['state'] = 'verifying'; c['report'] = verify(c); c['state'] = c['report']['status']; return c
 
 def summary(c, p):
-    return {k: c[k] for k in ['id', 'version', 'seed', 'setting', 'genre', 'title', 'victim', 'state', 'brief']} | {'found': len(p['found']), 'total': len(c['clues']), 'solved': p['solved'], 'parent_id': c.get('parent_id')}
+    return {k: c[k] for k in ['id', 'version', 'seed', 'setting', 'genre', 'title', 'victim', 'state', 'brief']} | {'found': len(p['found']), 'total': len(c['clues']), 'solved': p['solved'], 'parent_id': c.get('parent_id'), 'match_id': c.get('match_id')}
 
 def view(c, p, author=False):
     report = c.get('report') or {'status': c['state'], 'playable': False, 'checks': [], 'issues': []}
@@ -82,6 +107,7 @@ def view(c, p, author=False):
     return result
 
 @app.get('/api/session')
+@atomic
 def session(req: Request, response: Response):
     sid = req.cookies.get('case101_session')
     with db() as conn: row = conn.execute('SELECT * FROM sessions WHERE id=?', (sid,)).fetchone()
@@ -93,7 +119,7 @@ def session(req: Request, response: Response):
     with db() as conn:
         selected = conn.execute('SELECT selected FROM sessions WHERE id=?', (sid,)).fetchone()['selected']
         rows = conn.execute('SELECT data,progress FROM cases WHERE owner=?', (sid,)).fetchall()
-    return {'cases': [summary(json.loads(r['data']), json.loads(r['progress'])) for r in rows], 'selected': selected, 'settings': SETTINGS, 'genres': GENRES, 'relations': RELATIONS}
+    return {'cases': [summary(json.loads(r['data']), json.loads(r['progress'])) for r in rows if not json.loads(r['data']).get('match_id')], 'selected': selected, 'settings': SETTINGS, 'genres': GENRES, 'relations': RELATIONS}
 
 class Generation(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -102,8 +128,11 @@ class Generation(BaseModel):
     genre: str = 'murder'
 
 @app.post('/api/cases')
+@atomic
 def create(body: Generation, req: Request):
     sid = owner(req)
+    with db() as conn:
+        if conn.execute('SELECT 1 FROM matches WHERE seed=?', (body.seed,)).fetchone(): raise HTTPException(409, 'This seed is reserved for a private race.')
     try: c = generate(body.seed, body.setting, body.genre, 'mixed')
     except ValueError as e: raise HTTPException(422, str(e))
     # Distinct draft identity for a different fault variant, without changing reproducibility.
@@ -115,14 +144,17 @@ def create(body: Generation, req: Request):
     return view(c, fresh_progress(), True)
 
 @app.post('/api/cases/{cid}/verify')
+@atomic
 def verify_case(cid: str, req: Request):
     sid = owner(req); c, p = get(sid, cid); certify(c); put(sid, c, p); return view(c, p, True)
 
 @app.get('/api/cases/{cid}')
+@atomic
 def case_detail(cid: str, req: Request, author: bool = False):
     c, p = get(owner(req), cid); return view(c, p, author)
 
 @app.post('/api/cases/{cid}/select')
+@atomic
 def select(cid: str, req: Request):
     sid = owner(req); c, p = get(sid, cid)
     if c['state'] != 'verified' or not verify(c)['playable']: raise HTTPException(409, 'Choose a verified case. This draft is not playable.')
@@ -130,6 +162,7 @@ def select(cid: str, req: Request):
     return view(c, p)
 
 @app.post('/api/cases/{cid}/correction-preview')
+@atomic
 def preview_correction(cid: str, req: Request):
     sid = owner(req); c, p = get(sid, cid)
     if c['state'] != 'rejected': raise HTTPException(409, 'Only rejected drafts need correction.')
@@ -137,6 +170,7 @@ def preview_correction(cid: str, req: Request):
     return {'original_id': cid, 'proposed_id': fixed['id'], 'changes': changes, 'original_report': c['report'], 'result': verify(fixed)}
 
 @app.post('/api/cases/{cid}/correct')
+@atomic
 def apply_correction(cid: str, req: Request):
     sid = owner(req); c, p = get(sid, cid)
     if c['state'] != 'rejected': raise HTTPException(409, 'Only rejected drafts need correction.')
@@ -148,6 +182,7 @@ class Edit(BaseModel):
     requires: list[str] = Field(max_length=20)
 
 @app.post('/api/cases/{cid}/edit')
+@atomic
 def edit_case(cid: str, body: Edit, req: Request):
     sid = owner(req); c, _ = get(sid, cid); c = deepcopy(c)
     clue = next((x for x in c['clues'] if x['id'] == body.clue_id), None)
@@ -194,6 +229,7 @@ def require_playable(c):
     if c['state'] != 'verified' or not c.get('report', {}).get('playable'): raise HTTPException(409, 'This case is not verified/playable.')
 
 @app.post('/api/cases/{cid}/discover')
+@atomic
 def discover(cid: str, body: Discovery, req: Request):
     sid = owner(req); c, p = get(sid, cid); require_playable(c)
     if not discoverable(c, body.clue_id, p['found']): raise HTTPException(409, 'Recover the prerequisite evidence before opening this clue.')
@@ -214,6 +250,7 @@ class BoardAction(BaseModel):
     y: float = Field(default=0, ge=-100, le=300)
 
 @app.post('/api/cases/{cid}/board')
+@atomic
 def board(cid: str, body: BoardAction, req: Request):
     sid = owner(req); c, p = get(sid, cid); require_playable(c)
     if body.action in ['pin', 'unpin', 'position']:
@@ -239,23 +276,31 @@ def board(cid: str, body: BoardAction, req: Request):
     put(sid, c, p); return view(c, p)
 
 @app.post('/api/cases/{cid}/argument')
+@atomic
 def save_argument(cid: str, body: Argument, req: Request):
     sid = owner(req); c, p = get(sid, cid); require_playable(c); p['argument'] = body.model_dump(); put(sid, c, p)
     return {'saved': True}
 
 @app.post('/api/cases/{cid}/accuse')
+@atomic
 def accuse(cid: str, body: Argument, req: Request):
-    sid = owner(req); c, p = get(sid, cid); result = validate_accusation(c, p, body.model_dump())
+    sid = owner(req); c, p = get(sid, cid)
+    if c.get('match_id'):
+        from .race import race_accuse
+        return race_accuse(sid, c, p, body.model_dump())
+    result = validate_accusation(c, p, body.model_dump())
     p['argument'] = body.model_dump()
     if result['accepted']: p['solved'] = True
     put(sid, c, p); return result
 
 @app.post('/api/cases/{cid}/reveal')
+@atomic
 def reveal(cid: str, req: Request):
     sid = owner(req); c, p = get(sid, cid); p['revealed'] = True; put(sid, c, p)
     return {'solution': c['solution'], 'abandoned': not p['solved']}
 
 @app.get('/api/cases/{cid}/graph')
+@atomic
 def graph_view(cid: str, req: Request, author: bool = False):
     c, p = get(owner(req), cid); g = graph(c); proofs = infer(c, None if author else p['found'])
     allnodes = {n['id']: n for n in c['facts'] + c['clues']}
@@ -270,9 +315,12 @@ def graph_view(cid: str, req: Request, author: bool = False):
     return {'case_id': cid, 'nodes': nodes, 'edges': edges, 'paths': report.get('paths', []) if author else [], 'issues': report.get('issues', []) if author else []}
 
 @app.post('/api/import-v2')
+@atomic
 def import_v2(body: dict, req: Request):
     sid = owner(req); imported = 0
     for spec in body.get('library', [])[:200]:
+        with db() as conn:
+            if conn.execute('SELECT 1 FROM matches WHERE seed=?', (spec.get('seed'),)).fetchone(): continue
         try: c = certify(generate(int(spec['seed']), spec['setting'], 'murder'))
         except (ValueError, KeyError, TypeError): continue
         try: _, p = get(sid, c['id'])
@@ -290,6 +338,9 @@ def import_v2(body: dict, req: Request):
         p['legacy_case_completed'] = bool(old.get('solved'))
         put(sid, c, p); imported += 1
     return {'imported': imported, 'message': 'Recovered clues were migrated. Earlier completion flags are retained as history; Case 101 requires a newly validated argument.'}
+
+from .race import register
+register(app)
 
 if (ROOT / 'dist' / 'assets').exists(): app.mount('/assets', StaticFiles(directory=ROOT / 'dist' / 'assets'), name='assets')
 
