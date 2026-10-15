@@ -1,4 +1,5 @@
-import * as THREE from './assets/three.module.js';
+import * as THREE from 'three';
+export function mountWorld(){
 const $=s=>document.querySelector(s);let view='archive',place=0,clues=[];function render(){} function drawLinks(){}
 const scene=new THREE.Scene();scene.background=new THREE.Color('#2b211b');scene.fog=new THREE.Fog('#2b211b',20,48);
 const renderer=new THREE.WebGLRenderer({canvas:$('#world'),antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.95;
@@ -27,7 +28,7 @@ const desk=new THREE.Group();office.add(desk);box(7,.3,3.5,mats.wood,0,2.5,0,des
 for(const x of [-2.7,2.7]){box(1.4,2.4,2.8,mats.edge,x,1.2,0,desk);for(let i=0;i<3;i++){box(1.28,.64,.12,mats.wood,x,.5+i*.72,1.43,desk);box(.4,.06,.12,mats.metal,x,.5+i*.72,1.54,desk)}}
 box(3.8,.03,2.3,'#3f5141',0,2.78,.1,desk);
 for(let i=0;i<5;i++){const f=box(1.45,.06,1,mats.paper,-.9+i*.12,2.84+i*.065,.3-i*.13,desk);f.rotation.y=-.15;box(.4,.05,.2,mats.paper,-1.3+i*.12,2.87+i*.065,-.28-i*.13,desk)}
-const folderLabel=label('LANTERN HOUSE\nCASE No. 1042',1.1,.55,-.4,3.19,-.15,desk,'#354337','#cab88a',37);folderLabel.rotation.x=-Math.PI/2;
+const folderLabel=label('CASE 101\nINVESTIGATION FILE',1.1,.55,-.4,3.19,-.15,desk,'#354337','#cab88a',37);folderLabel.rotation.x=-Math.PI/2;
 cyl(.45,.55,.12,mats.black,-2.5,2.84,-.8,desk);cyl(.045,.045,1.6,mats.metal,-2.5,3.65,-.8,desk);const shade=cyl(.35,.7,.4,mats.green,-2.5,4.45,-.8,desk);const lamp=new THREE.PointLight('#ffcf7d',18,7,2);lamp.position.set(-2.5,4.1,-.8);desk.add(lamp);
 box(1.15,.2,.8,mats.black,1.8,2.9,-.6,desk);box(1,.45,.2,mats.black,1.8,3.15,-.9,desk);box(.8,.5,.02,mats.paper,1.8,3.4,-.93,desk);for(let a=0;a<3;a++)for(let b=0;b<8;b++)cyl(.032,.032,.03,mats.metal,1.43+b*.1,3.03,-.43+a*.12,desk);
 cyl(.18,.15,.35,mats.paper,2.8,3,.8,desk);cyl(.15,.15,.015,mats.edge,2.8,3.18,.8,desk);
@@ -43,13 +44,16 @@ function setPlace(p){place=p;while(investigation.children.length)investigation.r
  if(p===2){cyl(.35,.45,1,mats.black,-2.6,3.3,-.9,investigation);const l=new THREE.PointLight('#ffd68d',9,5);l.position.set(-2.6,4,-.9);investigation.add(l)}
  render();}
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();drawLinks()}addEventListener('resize',resize);resize();
-function animate(){requestAnimationFrame(animate);camera.position.lerp(camGoal,.035);target.lerp(lookGoal,.035);camera.lookAt(target);renderer.render(scene,camera);if(view==='scene'){markers.forEach(({clue,pos})=>{const el=document.getElementById('hot-'+clue.id);if(!el)return;const v=pos.clone().project(camera);el.style.left=(v.x*.5+.5)*innerWidth+'px';el.style.top=(-v.y*.5+.5)*innerHeight+'px';});const placed=[];markers.forEach(({clue})=>{const el=document.getElementById('hot-'+clue.id);if(!el)return;let x=parseFloat(el.style.left),y=parseFloat(el.style.top);const w=el.offsetWidth,h=el.offsetHeight;x=Math.max(w/2+12,Math.min(innerWidth-w/2-12,x));for(let k=0;k<8;k++){if(!placed.some(r=>Math.abs(x-r.x)<(w+r.w)/2+8&&Math.abs(y-r.y)<(h+r.h)/2+8))break;y+=h+8}el.style.left=x+'px';el.style.top=y+'px';placed.push({x,y,w,h})})}}animate();
+let frame;let disposed=false;function animate(){if(disposed)return;frame=requestAnimationFrame(animate);camera.position.lerp(camGoal,.035);target.lerp(lookGoal,.035);camera.lookAt(target);renderer.render(scene,camera);if(view==='scene'){markers.forEach(({clue,pos})=>{const el=document.getElementById('hot-'+clue.id);if(!el)return;const v=pos.clone().project(camera);el.style.left=(v.x*.5+.5)*innerWidth+'px';el.style.top=(-v.y*.5+.5)*innerHeight+'px';});const placed=[];markers.forEach(({clue})=>{const el=document.getElementById('hot-'+clue.id);if(!el)return;let x=parseFloat(el.style.left),y=parseFloat(el.style.top);const w=el.offsetWidth,h=el.offsetHeight;x=Math.max(w/2+12,Math.min(innerWidth-w/2-12,x));for(let k=0;k<8;k++){if(!placed.some(r=>Math.abs(x-r.x)<(w+r.w)/2+8&&Math.abs(y-r.y)<(h+r.h)/2+8))break;y+=h+8}el.style.left=x+'px';el.style.top=y+'px';placed.push({x,y,w,h})})}}animate();
 
 const setDressing=new THREE.Group();scene.add(setDressing);
-export function configureWorld(c){clues=c.clues;while(setDressing.children.length)setDressing.remove(setDressing.children[0]);
+function configureWorld(c){clues=c.clues;while(setDressing.children.length)setDressing.remove(setDressing.children[0]);
  if(c.setting==='train'){for(let i=0;i<4;i++){box(1.5,1.8,.2,mats.edge,-5+i*3.1,4.5,-4.3,setDressing);box(1.25,1.55,.22,'#64777a',-5+i*3.1,4.5,-4.15,setDressing);box(1.8,.5,1.2,mats.red,-5+i*3.1,.8,-3.8,setDressing);box(1.8,1.2,.2,mats.red,-5+i*3.1,1.6,-4.2,setDressing)}box(15,.13,.3,mats.metal,0,6,-4.3,setDressing)}
  if(c.setting==='museum'){for(const x of [-5,4.8]){box(1.3,2.3,1.3,'#aaa28a',x,1.15,-3,setDressing);const head=new THREE.Mesh(new THREE.IcosahedronGeometry(.7,0),mats.paper);head.position.set(x,3.1,-3);setDressing.add(head);cyl(.35,.55,.8,mats.paper,x,2.6,-3,setDressing)}box(5.5,2.6,.2,mats.metal,0,4.6,-4.6,setDressing);label('THE WEST GALLERY',5,2.1,0,4.6,-4.45,setDressing)}
 }
-export function worldMode(mode,p=0){view=mode;desk.visible=mode!=='scene';investigation.visible=mode==='scene';setDressing.visible=mode==='scene';if(mode==='scene'){camGoal.set(7,9,11);lookGoal.set(0,2.1,0);setPlace(p)}else{camGoal.set(0,8.7,8.7);lookGoal.set(0,2.7,0)}}
-export function introCamera(){camera.position.set(0,6.5,5.5);target.set(0,2.7,0);worldMode('archive')}
+function worldMode(mode,p=0){view=mode;desk.visible=mode!=='scene';investigation.visible=mode==='scene';setDressing.visible=mode==='scene';if(mode==='scene'){camGoal.set(7,9,11);lookGoal.set(0,2.1,0);setPlace(p)}else{camGoal.set(0,8.7,8.7);lookGoal.set(0,2.7,0)}}
+function introCamera(){camera.position.set(0,6.5,5.5);target.set(0,2.7,0);worldMode('archive')}
 worldMode('archive');
+
+return {configureWorld,worldMode,introCamera,dispose(){disposed=true;cancelAnimationFrame(frame);removeEventListener('resize',resize);renderer.dispose()}};
+}

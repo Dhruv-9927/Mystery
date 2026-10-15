@@ -1,23 +1,48 @@
-# ClueMesh — Mystery Generation with Verifiable Evidence Paths
+# Case 101
 
-A playable browser detective game with a procedurally modelled, low-poly Three.js environment and the supplied ten-second cinematic intro.
+A detective game with low-poly Three.js environments, paper case files, and a cork evidence board. React provides the interface; Python/FastAPI and NetworkX generate and verify cases before they can be played.
 
-Run `npm run dev`, then open http://localhost:4173. Run `npm test` for the deterministic engine checks. Static deploy files live in `dist/`; no build step is required.
+## Run locally
 
-## Play
+Requires Node.js 20.19+ and Python 3.12+.
 
-Enter or skip the intro. Search the three locations and interview four suspects. Pin evidence, connect cards, reconstruct the timeline, and submit a suspect with motive, means and opportunity evidence. Progress saves in browser local storage. Sound is optional.
+```powershell
+python -m pip install -r requirements.txt
+npm ci
+npm run build
+npm start
+```
 
-Choose an archive folder or generate a seed-based case in a country estate, sleeper train or museum. Each generated case changes people, culprit, motive, testimony and supporting records from shared ground truth. The seed and setting reproduce the case. Every accepted case is playable, including verified batch results. Each case saves its own clues, connections and card positions.
+Open http://127.0.0.1:4174. For frontend development, keep the Python server running and use `npm run dev` in another terminal (port 5173, with API proxy).
 
-## Current scope
+## Play and author
 
-The directed graph contains suspects, locations, clues, events, inferred facts and suspect conclusions. Discovery prerequisites are enforced in play. AND/OR inference rules produce minimal evidence proof sets by fixed-point propagation; routes are derived, not stored as a prewritten list. Accusations run the same inference using only attached recovered evidence. The crime-time record and category-specific evidence for the same suspect are required.
+Choose a verified folder or generate a seed-based murder, theft, or sabotage case in a manor, train, or museum. Investigation starts only after selecting a verified case. Search rooms and interview suspects; discovery prerequisites are enforced by the server. Each case retains its own discoveries, pins, card positions, typed connections, notes and saved argument.
 
-The verifier checks missing references, circular dependencies, discoverability, trusted assertion consistency with the timeline, resolvable witness lies, reachability, justification and a unique supported suspect. The graph shows directed requires/reveals/supports/refutes/contradicts edges. Author mode and shortest-path highlighting are explicit spoiler controls. Four fault-injection modes explain exact failed nodes and block play. A Web Worker checks 100 cases without blocking the main thread.
+Build an argument from discovered evidence, then challenge it: identify the strongest clue, resolve conflicting testimony with an independent record, exclude an alternative suspect, and check an assumption. The server checks the proof instead of trusting client-side completion flags. Accepted alternative proof paths count; a guessed suspect does not. Explicitly revealing a solution does not mark a case solved.
 
-The low-poly 3D scenes are built with geometry; archive folders, parchment, corkboard and dialogue use readable 2D overlays. Settings share basic architectural components with distinct props. The generator is rule/template based, currently centred on a poisoned-drink mystery family; it does not generate unrestricted prose. Verification operates on the formal assertions and rules, not the meaning of arbitrary natural-language text. Tests cover 300 generated cases across all settings and every minimal proof, plus mutations and invalid seeds.
+The generator can deliberately assemble broken drafts. Verification reports identify missing prerequisites, cycles, contradictions, time inconsistencies, unreachable conclusions and unsupported or ambiguous solutions. Correction previews explain individual changes; applying them creates a new revision and reruns verification, retaining the original. The prerequisite editor also creates revisions. Player graphs hide unrecovered evidence and conclusions; explicit author mode reveals spoilers and proof paths.
 
-## Assets
+## Architecture and limits
 
-The intro video was supplied by the user. Geometry and UI were created for this project. Three.js 0.170.0 is vendored under its MIT license. Fonts load from Google Fonts with system fallbacks.
+`backend/engine.py` holds seeded template generation, NetworkX graph checks, and fixed-point Horn inference with minimal evidence provenance. AND prerequisites must all be established: a graph path alone is insufficient. `backend/app.py` owns discovery, progress and accusation validation. SQLite stores anonymous browser sessions in `data/case101.sqlite3`; retain this directory and the browser cookie to preserve progress. Set `CASE101_DB` to choose another database location. This is a single-server prototype with anonymous sessions, not an account-based multiplayer service.
+
+Generation uses authored narrative templates and formal assertions, not unrestricted language generation. Verification proves properties of these encoded facts and rules; it cannot interpret arbitrary prose. Three settings share geometry with different props. Optional v2 import retains the original local save and a server snapshot while migrating recognized discovery IDs; old win flags do not authorize a v3 victory.
+
+## Media and audio
+
+The user-supplied `WhatsApp Video 2026-10-15 at 11.33.33 PM.mp4` is the intro. Background music is extracted from the supplied `Video Project.mp4`, with a three-second overlap crossfade at the loop boundary. The intro is muted to avoid competing tracks. Music starts after user interaction, continues across screens, and has a persistent toggle independent of paper/pin effects. Media files live in `public/assets`.
+
+## Verify
+
+```powershell
+npm test
+node tests/audio.test.mjs
+npm run build
+```
+
+Tests cover seeded generation across all nine setting/genre combinations, alternate proofs, broken drafts and corrections, prerequisite enforcement, invalid accusations, case/session isolation, board CRUD, graph spoiler boundaries, explicit reveal, and a complete API investigation-to-verdict journey. Audio unit tests cover gesture unlock, looping, toggles, saved preferences and avoiding track restarts.
+
+## Hosting
+
+This version requires a Python service serving both `/api` and the generated `dist` directory. The previous static Sites URL does not run this backend and has not been updated with this build. A static-only upload will not work. Build the frontend before starting Uvicorn; use a persistent database volume, HTTPS reverse proxy, and set `CASE101_ORIGINS` to the public origin if the proxy's internal origin differs. A Dockerfile is included; bind port 4174 and persist `/app/data`. No cloud deployment or paid service is provisioned by this repository.

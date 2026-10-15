@@ -1,1 +1,1 @@
-{"name":"cluemesh","private":true,"type":"module","scripts":{"test":"node test.mjs","dev":"node server.mjs"}}
+{"name":"case-101","version":"3.0.0","private":true,"type":"module","scripts":{"dev":"vite --host 127.0.0.1","build":"vite build","start":"python -m uvicorn backend.app:app --host 127.0.0.1 --port 4174","test":"python -m pytest tests -q"},"dependencies":{"@xyflow/react":"^12.10.0","react":"^19.2.0","react-dom":"^19.2.0","three":"^0.170.0"},"devDependencies":{"vite":"^7.2.0"}}

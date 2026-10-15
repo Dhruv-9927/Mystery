@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+const store=new Map();globalThis.localStorage={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,v)};
+let starts=0,pauses=0;globalThis.Audio=class{constructor(src){this.src=src;this.currentTime=13}async play(){starts++}pause(){pauses++}};
+const {GameAudio}=await import('../src/audio.js');const a=new GameAudio();
+assert.equal(a.audio.src,'/assets/ambience.mp3');assert(a.audio.loop);
+await a.unlock();assert.equal(starts,1);const instance=a.audio;
+await a.toggle();assert.equal(pauses,1);assert(!a.enabled);
+a.effect();assert(!a.ctx);await a.toggle();assert.equal(a.audio,instance);assert.equal(a.audio.currentTime,13);
+a.toggleEffects();assert(!a.effects);assert.equal(new GameAudio().effects,false);
+await a.toggle();assert.equal(new GameAudio().enabled,false);
+console.log('Passed: gesture unlock, looping, persistent sound/effects preferences, no navigation restart, mute blocks effects.');
